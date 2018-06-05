@@ -1,0 +1,13 @@
+Dependencies for Project 'Connect4Simulation', Target 'Connect4Simulation': (DO NOT MODIFY !)
+F (.\startup.s)(0x5197C8FA)(--cpu Cortex-M4 --pd "__RTX SETA 1" --pd "__EVAL SETA 1" -g --apcs=interwork -I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary--list .\startup.lst --xref -o .\startup.o --depend .\startup.d)
+F (.\random.s)(0x5349B084)(--cpu Cortex-M4 --pd "__RTX SETA 1" --pd "__EVAL SETA 1" -g --apcs=interwork -I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary--list .\random.lst --xref -o .\random.o --depend .\random.d)
+F (.\TExaS.c)(0x569B476C)(-c --cpu Cortex-M4 -D__RTX -D__EVAL -g -O0 --apcs=interwork --split_sections --signed_chars -I.. -I..\..\..-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_LM4F120H5QR-o .\texas.o --omf_browse .\texas.crf --depend .\texas.d)
+I (TExaS.h)(0x569B4776)
+F (.\VirtualNokia5110.c)(0x54A06030)(-c --cpu Cortex-M4 -D__RTX -D__EVAL -g -O0 --apcs=interwork --split_sections --signed_chars -I.. -I..\..\..-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_LM4F120H5QR-o .\virtualnokia5110.o --omf_browse .\virtualnokia5110.crf --depend .\virtualnokia5110.d)
+I (Nokia5110.h)(0x5343F13E)
+F (.\Connect4Simulation.c)(0x5B16A88B)(-c --cpu Cortex-M4 -D__RTX -D__EVAL -g -O0 --apcs=interwork --split_sections --signed_chars -I.. -I..\..\..-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_LM4F120H5QR-o .\connect4simulation.o --omf_browse .\connect4simulation.crf --depend .\connect4simulation.d)
+I (tm4c123gh6pm.h)(0x5B11C78C)
+I (Nokia5110.h)(0x5343F13E)
+I (Random.h)(0x52866C32)
+I (TExaS.h)(0x569B4776)
+I (image.h)(0x5B155174)
