@@ -196,7 +196,7 @@ void drawInCellAI(int p){
 	Nokia5110_ClearBuffer();
 	drawGrid();
 	Nokia5110_PrintBMP(x , y , (p == 1 ? p1 : p2), 0);
-	Nokia5110_PrintBMP(SCREENW - 15 ,y - 4 , (p == 1 ? PX : Pplus), 0);
+	Nokia5110_PrintBMP(SCREENW - 15 ,y - 4 , (p == 1 ? PX : AI), 0);
 	Nokia5110_DisplayBuffer();
 	C = bt(p , 0);
 	
@@ -205,7 +205,7 @@ void drawInCellAI(int p){
 		drawGrid();
 		x += (cellW + vlineW);
 		Nokia5110_PrintBMP(x , y , (p == 1 ? p1 : p2), 0);
-		Nokia5110_PrintBMP(SCREENW - 15 ,y - 4 , (p == 1 ? PX : Pplus), 0);
+		Nokia5110_PrintBMP(SCREENW - 15 ,y - 4 , (p == 1 ? PX : AI), 0);
 		Nokia5110_DisplayBuffer();
 		Delay100ms(10);
 	}
@@ -563,6 +563,25 @@ int kitMode(){
 // check who is the winner
 // w 0 --> tie , 1 --> player one (X) wins , 2 --> player two (+) wins
 void Winner(int w){
+	
+	Nokia5110_SetCursor(1,0);
+	Nokia5110_OutString("Game Over!");
+	Delay100ms(7);
+	
+	Nokia5110_SetCursor(1,0);
+	Nokia5110_OutString("           ");
+	Delay100ms(7);
+	
+	Nokia5110_SetCursor(1,0);
+	Nokia5110_OutString("Game Over!");
+	Delay100ms(7);
+	
+	Nokia5110_SetCursor(1,0);
+	Nokia5110_OutString("          ");
+	Delay100ms(7);
+	Nokia5110_SetCursor(1,0);
+	Nokia5110_OutString("Game Over!"); 
+	
 	Nokia5110_Clear();
 	Nokia5110_SetCursor(2,1);
 	if(w == 0){ // game is tie (no winner)
@@ -581,7 +600,12 @@ void Winner(int w){
 		
 	}
 	else{ // player 2 wins
-		Nokia5110_OutString("Player +");
+		if(playMode)
+			Nokia5110_OutString("Player +");
+		else{
+			Nokia5110_SetCursor(5,1);
+			Nokia5110_OutString("AI");
+		}
 		Nokia5110_SetCursor(4,3);
 		Nokia5110_OutString("Wins!");
 	}
