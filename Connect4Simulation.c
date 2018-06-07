@@ -3,6 +3,7 @@
 #include "Random.h"
 #include "TExaS.h"
 #include "image.h"
+#include "UART.h"
 #define max(x, y) (((x) > (y)) ? (x) : (y))
 #define min(x, y) (((x) < (y)) ? (x) : (y))
 
@@ -15,31 +16,59 @@ int leftMargin = 6;
 int marginTop = 9;
 int i, j, k, turn = 0;
 int playMode, kit_mode;
+int AImode;
 int colsScore[7];
-int btlaps = 4;
+int btlaps = 5;
+unsigned int sendC;
+unsigned int sendC2;
 
+char temp ;
+char temp2;
+int cMode;
 int cellPlayer[rows][cols];
 int currentFreePos[cols];
 
+
 unsigned int SW1, f1, SW1Pressed = 0;
 unsigned int SW2, f2, SW2Pressed = 0;
+
+
+//for the communication
+const int allowedNumOftrialsToOut = 10;
+const int allowedNumOftrialsToInput = 1000000;
+int numOfTrialsOut;
+int numOfTrialsIn;
+
+unsigned char inputFromTheSecondDevice;
+unsigned char outputToTheSecondDevice;
+
+//the protocole
+unsigned char handshake = 17;
+unsigned char confirmation = 200;
+unsigned char player1 = 31;
+unsigned char player2 = 32;
+
+
 
 // function prototypes 
 void PortF_Init(void);
 void welcomeScreen(void);
 void Delay100ms(unsigned long count); // time delay in 0.1 seconds
 void drawGrid(void);
-void drawInCell(int);
+int drawInCell(int);
 int WhoIsWinner(void);
 int selectMode(void);
 int kitMode(void);
 void Winner(int w);
 int bt(int p, int lap);
-void drawInCellAI(int p);
-
+int drawInCellAI(int p);
+int connectionMode(void);
+int twoKitsMode();
 int main(void){
-  TExaS_Init(NoLCD_NoScope);  // set system clock to 80 MHz
-  
+	
+	UART1_Init();
+	TExaS_Init(SSI0_Real_Nokia5110_Scope);  // set system clock to 80 MHz
+  //TExaS_Init(NoLCD_NoScope);  // set system clock to 80 MHz
   Random_Init(1);
   Nokia5110_Init();
   PortF_Init();
@@ -47,7 +76,6 @@ int main(void){
   Nokia5110_Clear();
   welcomeScreen();
   Nokia5110_SetCursor(0, 0); // renders screen
-
   kit_mode = kitMode();
   // one kit mode
   if(!kit_mode){
@@ -114,6 +142,422 @@ int main(void){
 	// two kits mode
 	else{
 		// two kits mode
+		AImode = twoKitsMode();
+		if(AImode){
+			cMode = connectionMode();
+			if(!cMode){
+				
+						// master mode
+						//outputToTheScreen(2, 2, "Trying to connect..", 1);
+						Nokia5110_Clear();
+						Nokia5110_SetCursor(2,2);
+						Nokia5110_OutString("Trying to connect..");
+						GPIO_PORTF_DATA_R = 0x04; //blue led is on
+						while(numOfTrialsIn < allowedNumOftrialsToInput){
+							
+							UART1_OutChar(handshake);
+							inputFromTheSecondDevice = UART1_InCharNonBlocking(); // check for confirmation from the slave
+							
+							//if(codingMode) Delay100ms(5); // delay .5 second
+							
+							//if there was data, break the loop
+							if(inputFromTheSecondDevice){
+								/*GPIO_PORTF_DATA_R = 0x02;
+								for(i = 0; i < (int)inputFromTheSecondDevice*2; i++){
+									GPIO_PORTF_DATA_R ^= 0x04;
+									if(!codingMode) Delay100ms(5);
+								}*/
+								break;
+							}
+							
+							numOfTrialsIn++;
+						}
+						numOfTrialsIn = 0;
+						
+						if(inputFromTheSecondDevice == confirmation){
+							Nokia5110_Clear();
+							Nokia5110_SetCursor(2,2);
+							Nokia5110_OutString("Connected");
+							
+							GPIO_PORTF_DATA_R = 0x08; //green led is on
+							Nokia5110_ClearBuffer();
+							drawGrid();
+							Nokia5110_DisplayBuffer();
+							while(!WhoIsWinner() && turn < rows*cols){
+								
+								sendC = drawInCell(1);
+								temp = sendC + '0';
+								UART1_OutChar(temp);
+								//while( UART1_InCharNonBlocking() != 200);
+								if(WhoIsWinner() == 1){
+									//player 1 wins
+									Winner(1);
+									break;
+								}
+								
+								else if(WhoIsWinner() == 2){
+									//player 2 wins
+									Winner(3);
+									break;
+								}
+								
+								temp = UART1_InChar();
+								sendC = temp - '0';
+								Nokia5110_Clear();
+								cellPlayer[currentFreePos[sendC]][sendC] = 2;
+								currentFreePos[sendC]++;
+								
+								
+							}
+							if(WhoIsWinner() == 1){
+									//player 1 wins
+									Winner(1);
+								}
+								
+								else if(WhoIsWinner() == 2){
+									//player 2 wins
+									Winner(3);
+								}
+								
+								else{
+									//grid if full
+									Winner(0);
+								}
+						}else{
+							Nokia5110_SetCursor(2,2);
+							Nokia5110_OutString("Connection Error! ");
+							GPIO_PORTF_DATA_R = 0x02; //red led is on
+							
+							
+							//if(!codingMode) Delay100ms(5);
+							
+						}
+						
+			}
+			else{
+				// slave mode
+				//[slave] the handshake <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+						//the master should send 17
+						while(numOfTrialsIn < allowedNumOftrialsToInput){
+							Nokia5110_Clear();
+							Nokia5110_SetCursor(2,2);
+							Nokia5110_OutString("The handeshake.");
+							GPIO_PORTF_DATA_R = 0x04; //blue led is on
+							
+							//if(codingMode) Delay100ms(5); // delay .5 second
+							inputFromTheSecondDevice = UART1_InChar(); // see if there was data sent by the master
+							
+							//if there was data, break the loop
+							if(inputFromTheSecondDevice){
+								/*GPIO_PORTF_DATA_R = 0x02;
+								for(i = 0; i < (int)inputFromTheSecondDevice*2; i++){
+									GPIO_PORTF_DATA_R ^= 0x04;
+									if(!codingMode) Delay100ms(5);
+								}*/
+								break;
+							}
+							
+							numOfTrialsIn++;
+						}
+						numOfTrialsIn = 0;
+						if(inputFromTheSecondDevice == handshake){
+							//Nokia5110_Clear();
+							//Nokia5110_SetCursor(0,0);
+							
+							//Nokia5110_OutString("Connected, confirmation code is sent.");
+							//Delay100ms(100);
+							//Nokia5110_Clear();
+							GPIO_PORTF_DATA_R = 0x08; //green led is on
+							
+							//	isMenuMode = 0; // get out from the menu
+							UART1_OutChar(confirmation);
+							Nokia5110_ClearBuffer();
+							drawGrid();
+							Nokia5110_DisplayBuffer();
+							
+							
+							//if(!codingMode) Delay100ms(5);
+							//Nokia5110_ClearBuffer();
+							//Nokia5110_SetCursor(1,2);
+							//Nokia5110_OutString("Connected, confirmation code");
+							//drawGrid();
+							//Nokia5110_DisplayBuffer();
+							while(!WhoIsWinner() && turn < rows*cols){
+								/*//sendC = 100;
+								temp =  UART1_InChar();
+								sendC = temp - '0';
+								//UART1_OutChar(200);
+								cellPlayer[currentFreePos[sendC]][sendC] = 1;
+								currentFreePos[sendC]++;
+								Nokia5110_Clear();
+								
+								sendC = drawInCell(2);
+								drawGrid();
+								Nokia5110_DisplayBuffer();
+								temp = sendC + '0';
+								UART1_OutChar(temp);*/
+								while(inputFromTheSecondDevice == (temp2 = UART1_InChar()) ){
+									//temp2 = UART1_InChar();
+								}
+								
+								
+								sendC2 = temp2 - '0';
+								Nokia5110_Clear();
+
+								cellPlayer[currentFreePos[sendC2]][sendC2] = 1;
+								currentFreePos[sendC2]++;
+								if(WhoIsWinner() == 1){
+									//player 1 wins
+									Winner(1);
+									break;
+								}
+								
+								else if(WhoIsWinner() == 2){
+									//player 2 wins
+									Winner(3);
+									break;
+								}
+								sendC2 = drawInCell(2);
+								temp2 = sendC2 + '0';
+								UART1_OutChar(temp2);
+								
+								
+								
+							}
+							if(WhoIsWinner() == 1){
+									//player 1 wins
+									Winner(1);
+								}
+								
+								else if(WhoIsWinner() == 2){
+									//player 2 wins
+									Winner(3);
+								}
+								
+								else{
+									//grid if full
+									Winner(0);
+								}
+						}else{
+							
+							Nokia5110_SetCursor(2,2);
+							Nokia5110_OutString("Connection Error!");
+							GPIO_PORTF_DATA_R = 0x02; //red led is on
+							//menuCursor = 0;
+							//if(!codingMode) Delay100ms(5);
+						}
+
+			}
+			
+		}
+		else{
+				cMode = connectionMode();
+			if(!cMode){
+				
+						// master mode
+						//outputToTheScreen(2, 2, "Trying to connect..", 1);
+						Nokia5110_Clear();
+						Nokia5110_SetCursor(2,2);
+						Nokia5110_OutString("Trying to connect..");
+						GPIO_PORTF_DATA_R = 0x04; //blue led is on
+						while(numOfTrialsIn < allowedNumOftrialsToInput){
+							
+							UART1_OutChar(handshake);
+							inputFromTheSecondDevice = UART1_InCharNonBlocking(); // check for confirmation from the slave
+							
+							//if(codingMode) Delay100ms(5); // delay .5 second
+							
+							//if there was data, break the loop
+							if(inputFromTheSecondDevice){
+								/*GPIO_PORTF_DATA_R = 0x02;
+								for(i = 0; i < (int)inputFromTheSecondDevice*2; i++){
+									GPIO_PORTF_DATA_R ^= 0x04;
+									if(!codingMode) Delay100ms(5);
+								}*/
+								break;
+							}
+							
+							numOfTrialsIn++;
+						}
+						numOfTrialsIn = 0;
+						
+						if(inputFromTheSecondDevice == confirmation){
+							Nokia5110_Clear();
+							Nokia5110_SetCursor(2,2);
+							Nokia5110_OutString("Connected");
+							
+							GPIO_PORTF_DATA_R = 0x08; //green led is on
+							Nokia5110_ClearBuffer();
+							drawGrid();
+							Nokia5110_DisplayBuffer();
+							while(!WhoIsWinner() && turn < rows*cols){
+								
+								sendC = drawInCell(1);
+								temp = sendC + '0';
+								UART1_OutChar(temp);
+								//while( UART1_InCharNonBlocking() != 200);
+								if(WhoIsWinner() == 1){
+									//player 1 wins
+									Winner(1);
+									break;
+								}
+								
+								else if(WhoIsWinner() == 2){
+									//player 2 wins
+									Winner(2);
+									break;
+								}
+								
+								temp = UART1_InChar();
+								sendC = temp - '0';
+								Nokia5110_Clear();
+								cellPlayer[currentFreePos[sendC]][sendC] = 2;
+								currentFreePos[sendC]++;
+								
+								
+							}
+							if(WhoIsWinner() == 1){
+									//player 1 wins
+									Winner(1);
+								}
+								
+								else if(WhoIsWinner() == 2){
+									//player 2 wins
+									Winner(2);
+								}
+								
+								else{
+									//grid if full
+									Winner(0);
+								}
+						}else{
+							Nokia5110_SetCursor(2,2);
+							Nokia5110_OutString("Connection Error! ");
+							GPIO_PORTF_DATA_R = 0x02; //red led is on
+							
+							
+							//if(!codingMode) Delay100ms(5);
+							
+						}
+						
+			}
+			else{
+				// AI mode
+				
+				//[slave] the handshake <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+						//the master should send 17
+						while(numOfTrialsIn < allowedNumOftrialsToInput){
+							Nokia5110_Clear();
+							Nokia5110_SetCursor(2,2);
+							Nokia5110_OutString("The handeshake.");
+							GPIO_PORTF_DATA_R = 0x04; //blue led is on
+							
+							//if(codingMode) Delay100ms(5); // delay .5 second
+							inputFromTheSecondDevice = UART1_InChar(); // see if there was data sent by the master
+							
+							//if there was data, break the loop
+							if(inputFromTheSecondDevice){
+								/*GPIO_PORTF_DATA_R = 0x02;
+								for(i = 0; i < (int)inputFromTheSecondDevice*2; i++){
+									GPIO_PORTF_DATA_R ^= 0x04;
+									if(!codingMode) Delay100ms(5);
+								}*/
+								break;
+							}
+							
+							numOfTrialsIn++;
+						}
+						numOfTrialsIn = 0;
+						if(inputFromTheSecondDevice == handshake){
+							//Nokia5110_Clear();
+							//Nokia5110_SetCursor(0,0);
+							
+							//Nokia5110_OutString("Connected, confirmation code is sent.");
+							//Delay100ms(100);
+							//Nokia5110_Clear();
+							GPIO_PORTF_DATA_R = 0x08; //green led is on
+							
+							//	isMenuMode = 0; // get out from the menu
+							UART1_OutChar(confirmation);
+							Nokia5110_ClearBuffer();
+							drawGrid();
+							Nokia5110_DisplayBuffer();
+							
+							
+							//if(!codingMode) Delay100ms(5);
+							//Nokia5110_ClearBuffer();
+							//Nokia5110_SetCursor(1,2);
+							//Nokia5110_OutString("Connected, confirmation code");
+							//drawGrid();
+							//Nokia5110_DisplayBuffer();
+							while(!WhoIsWinner() && turn < rows*cols){
+								/*//sendC = 100;
+								temp =  UART1_InChar();
+								sendC = temp - '0';
+								//UART1_OutChar(200);
+								cellPlayer[currentFreePos[sendC]][sendC] = 1;
+								currentFreePos[sendC]++;
+								Nokia5110_Clear();
+								
+								sendC = drawInCell(2);
+								drawGrid();
+								Nokia5110_DisplayBuffer();
+								temp = sendC + '0';
+								UART1_OutChar(temp);*/
+								while(inputFromTheSecondDevice == (temp2 = UART1_InChar()) ){
+									//temp2 = UART1_InChar();
+								}
+								
+								
+								sendC2 = temp2 - '0';
+								Nokia5110_Clear();
+
+								cellPlayer[currentFreePos[sendC2]][sendC2] = 1;
+								currentFreePos[sendC2]++;
+								if(WhoIsWinner() == 1){
+									//player 1 wins
+									Winner(1);
+									break;
+								}
+								
+								else if(WhoIsWinner() == 2){
+									//player 2 wins
+									Winner(2);
+									break;
+								}
+								sendC2 = drawInCellAI(2);
+								temp2 = sendC2 + '0';
+								UART1_OutChar(temp2);
+								
+								
+								
+							}
+							if(WhoIsWinner() == 1){
+									//player 1 wins
+									Winner(1);
+								}
+								
+								else if(WhoIsWinner() == 2){
+									//player 2 wins
+									Winner(2);
+								}
+								
+								else{
+									//grid if full
+									Winner(0);
+								}
+						}else{
+							
+							Nokia5110_SetCursor(2,2);
+							Nokia5110_OutString("Connection Error!");
+							GPIO_PORTF_DATA_R = 0x02; //red led is on
+							//menuCursor = 0;
+							//if(!codingMode) Delay100ms(5);
+						}
+
+			}
+
+		}
 	}
 }
 
@@ -127,7 +571,8 @@ void Delay100ms(unsigned long count){unsigned long volatile time;
     count--;
   }
 }
-
+// generate computer descision 
+// backtrack (do recursion undo) function to predict 4 moves in advance  
 
 int bt(int p, int lap){
 	int ii;
@@ -140,7 +585,7 @@ int bt(int p, int lap){
 	if(lap == btlaps)
 		return 0;
 	
-	
+	// do 
 	for(ii = 0 ; ii < cols ; ii++){
 		ret = -1;
 		if(currentFreePos[ii] < rows){
@@ -156,14 +601,14 @@ int bt(int p, int lap){
 			else if(WhoIsWinner()){
 				ret = (lap - btlaps);
 			}
-			
+			// recursion 
 			else{
 				if(lap)
 					temp += bt(p , lap + 1);
 				else
 					colsScore[ii] = bt(p , lap + 1);
 			}
-			
+			// undo
 			currentFreePos[ii]--;
 			cellPlayer[currentFreePos[ii]][ii] = 0;
 		}
@@ -171,6 +616,8 @@ int bt(int p, int lap){
 			return ret;
 	}
 	
+	
+	// getting the AI descision to play
 	if(lap)
 		return temp;
 	else{
@@ -189,7 +636,8 @@ int bt(int p, int lap){
 	return ret;
 }
 
-void drawInCellAI(int p){
+// draw AI play in the grid 
+int drawInCellAI(int p){
 	int C ;
 	int x = leftMargin + vlineW + 1 , y = marginTop; 
 
@@ -217,10 +665,10 @@ void drawInCellAI(int p){
 	Nokia5110_ClearBuffer();
 	drawGrid();
 	Nokia5110_DisplayBuffer();
-	return ;
+	return C;
 }
-
-void drawInCell(int p){
+// update the grid with any player move 
+int drawInCell(int p){
 	int C = 0;
 	int x = leftMargin + vlineW + 1 , y = marginTop; 
 	Nokia5110_ClearBuffer();
@@ -274,10 +722,12 @@ void drawInCell(int p){
 			drawGrid();
 			Nokia5110_DisplayBuffer();
 			SW2Pressed = 0;
-			return ;
+			return  C;
 		}
 	}
 }
+
+// drawing the initial grid  rows * cols ( 6 * 7 )
 
 void drawGrid(){
 	// vertical
@@ -305,6 +755,8 @@ void drawGrid(){
 				Nokia5110_PrintBMP(leftMargin + 1 + j*(vlineW + cellW) + vlineW, SCREENH - (2 + i*(hlineH + cellH) + hlineH) , (cellPlayer[i][j] == 1 ? p1 : p2), 0);
 }
 
+
+// Welcome screen 
 void welcomeScreen(){
 	int i , j;
 	Nokia5110_SetCursor(2, 1);
@@ -318,17 +770,18 @@ void welcomeScreen(){
 	for(j = 2 ; j < 9 ; j+= 2){
 		Nokia5110_SetCursor( 6 + j   , 5);
 		Nokia5110_OutString(".");
-		Delay100ms(3);
+		Delay100ms(10);
 	}
 
 	for(i = 0 ; i < 7 ; i++){
 		Nokia5110_SetCursor(0,i);
 		Nokia5110_OutString("            ");
-		Delay100ms(1);
+		Delay100ms(15);
 	}
 	Nokia5110_Clear();
 }
 
+// checking winning conditions vertical , horizontal or diagonal
 int WhoIsWinner(){
 	int c1 = 0, c2 = 0;
 
@@ -448,7 +901,9 @@ int WhoIsWinner(){
 }
 
 // selecting mode for playing 
+// Player Vs Player or Player Vs AI
 int selectMode(){
+	
 	int k = 0 ; 
 	Nokia5110_SetCursor(1,0);
 	Nokia5110_OutString("select mode");
@@ -503,6 +958,62 @@ int selectMode(){
 	return k ; 
 	
 }
+
+int twoKitsMode(){
+	int k = 0 ; 
+	Nokia5110_SetCursor(1,0);
+	Nokia5110_OutString("select mode");
+	Nokia5110_SetCursor(2,2);
+	Nokia5110_OutString("P1 VS AI");
+	Nokia5110_SetCursor(2,4);
+	Nokia5110_OutString("P1 VS P2");
+	Nokia5110_SetCursor(0,k+2);	
+	Nokia5110_OutString(" >");
+	
+	while(1)
+	{
+		SW1 = GPIO_PORTF_DATA_R&0x10;     // read PF4 into SW1
+		//Delay100ms(1);
+		if(!SW1){
+				while (!SW1){
+					SW1 = GPIO_PORTF_DATA_R&0x10;
+				}
+				
+				Nokia5110_SetCursor(0,k+2);	
+				Nokia5110_OutString("  ");				
+				k+=2;
+				if(k>2)
+					k=0;
+				Nokia5110_SetCursor(0,k+2);	
+				Nokia5110_OutString(" >");
+		 }
+		SW2 = GPIO_PORTF_DATA_R&0x01;     // read PF4 into SW2
+		//Delay100ms(1);
+		if(!SW2){
+			while (!SW2){
+				SW2 = GPIO_PORTF_DATA_R&0x01;
+			 }
+			
+			Nokia5110_SetCursor(2,k+2);
+			Nokia5110_OutString("        ");	
+			Delay100ms(3);			 
+			Nokia5110_SetCursor(2,k+2);
+			Nokia5110_OutString(k?"P1 VS P2":"P1 VS AI");	
+			Delay100ms(3);			 
+			Nokia5110_SetCursor(2,k+2);
+			Nokia5110_OutString("        ");		
+			Delay100ms(3);
+			Nokia5110_SetCursor(2,k+2);
+			Nokia5110_OutString(k?"P1 VS P2":"P1 VS AI");		
+				break ;
+		 }
+		 
+	 }
+	Nokia5110_Clear();
+	// 0 P VS AI 
+	// 2 P1 VS P2
+	return k ; 
+}
 // select kit mode (1 kit or 2 kit)
 int kitMode(){
 	int k = 0 ; 
@@ -556,6 +1067,64 @@ int kitMode(){
 	 }
 	// 0 one Kit
 	// 2 two kits
+	Nokia5110_Clear();
+	return k ; 
+	
+}
+// master or slave mode
+int connectionMode(){
+	int k = 0 ; 
+	Nokia5110_SetCursor(2,0);
+	Nokia5110_OutString("Kit mode");
+	Nokia5110_SetCursor(2,2);
+	Nokia5110_OutString("Master");
+	Nokia5110_SetCursor(2,4);
+	Nokia5110_OutString("Slave");
+	Nokia5110_SetCursor(0,k+2);	
+	Nokia5110_OutString(" >");
+	
+	while(1)
+	{
+		SW1 = GPIO_PORTF_DATA_R&0x10;     // read PF4 into SW1
+		//Delay100ms(1);
+		if(!SW1){
+				while (!SW1){
+					SW1 = GPIO_PORTF_DATA_R&0x10;
+				}
+				
+				Nokia5110_SetCursor(0,k+2);	
+				Nokia5110_OutString("  ");				
+				k+=2;
+				if(k>2)
+					k=0;
+				Nokia5110_SetCursor(0,k+2);	
+				Nokia5110_OutString(" >");
+		 }
+		SW2 = GPIO_PORTF_DATA_R&0x01;     // read PF4 into SW2
+		//Delay100ms(1);
+		if(!SW2){
+			while (!SW2){
+				SW2 = GPIO_PORTF_DATA_R&0x01;
+			 }
+			
+			Nokia5110_SetCursor(2,k+2);
+			Nokia5110_OutString("        ");	
+			Delay100ms(3);			 
+			Nokia5110_SetCursor(2,k+2);
+			Nokia5110_OutString(!k?"Master" : "Slave");	
+			Delay100ms(3);			 
+			Nokia5110_SetCursor(2,k+2);
+			Nokia5110_OutString("        ");		
+			Delay100ms(3);
+			Nokia5110_SetCursor(2,k+2);
+			Nokia5110_OutString(!k?"Master" : "slave");	
+			 break ;
+		 }
+		 
+	 }
+	// 0 master
+	// 2 slave
+	Nokia5110_Clear();
 	return k ; 
 	
 }
@@ -566,19 +1135,19 @@ void Winner(int w){
 	
 	Nokia5110_SetCursor(1,0);
 	Nokia5110_OutString("Game Over!");
-	Delay100ms(7);
+	Delay100ms(30);
 	
 	Nokia5110_SetCursor(1,0);
 	Nokia5110_OutString("           ");
-	Delay100ms(7);
+	Delay100ms(30);
 	
 	Nokia5110_SetCursor(1,0);
 	Nokia5110_OutString("Game Over!");
-	Delay100ms(7);
+	Delay100ms(30);
 	
 	Nokia5110_SetCursor(1,0);
 	Nokia5110_OutString("          ");
-	Delay100ms(7);
+	Delay100ms(40);
 	Nokia5110_SetCursor(1,0);
 	Nokia5110_OutString("Game Over!"); 
 	
@@ -599,8 +1168,13 @@ void Winner(int w){
 		Nokia5110_OutString("Wins!");
 		
 	}
+	else if(w == 3){
+		Nokia5110_OutString("Player +");
+		Nokia5110_SetCursor(4,3);
+		Nokia5110_OutString("Wins!");
+	}
 	else{ // player 2 wins
-		if(playMode)
+		if(playMode && kitMode)
 			Nokia5110_OutString("Player +");
 		else{
 			Nokia5110_SetCursor(5,1);
